@@ -6,7 +6,7 @@ app = Flask(__name__)
 
 
 def json_response(data, status=200):
-    return Response(json.dumps(data), mimetype="application/json",
+    return Response(json.dumps(data, indent=4) + "\n", mimetype="application/json",
                     status=status)
 
 
@@ -70,7 +70,7 @@ def jobs_or_history(prog, clusterid, procid, constraint, projection):
 @app.route("/v1/jobs/<int:clusterid>/<int:procid>")
 def jobs(clusterid=None, procid=None):
     constraint = request.args.get("constraint", "")
-    projection = request.args.get("projection", "owner,cmd,args").lower()
+    projection = request.args.get("projection", "").lower()
     return jobs_or_history("condor_q", clusterid=clusterid, procid=procid, constraint=constraint, projection=projection)
 
 
@@ -79,5 +79,5 @@ def jobs(clusterid=None, procid=None):
 @app.route("/v1/history/<int:clusterid>/<int:procid>")
 def history(clusterid=None, procid=None):
     constraint = request.args.get("constraint", "")
-    projection = request.args.get("projection", "owner,cmd,args").lower()
+    projection = request.args.get("projection", "").lower()
     return jobs_or_history("condor_history", clusterid=clusterid, procid=procid, constraint=constraint, projection=projection)
