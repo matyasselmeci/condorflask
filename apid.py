@@ -1,83 +1,92 @@
 import subprocess
 import json
 
-from flask import (Flask, Response, request)
+from flask import Flask, Response, request
+from flask_restful import Resource, Api, abort, reqparse
+
 app = Flask(__name__)
+api = Api(app)
 
 
-def json_response(data, status=200):
-    return Response(json.dumps(data, indent=4) + "\n", mimetype="application/json",
-                    status=status)
+class JobInfo:
+    executable = ""
 
+    def query(self, clusterid, procid, constraint, projection):
+        if not self.executable:
+            abort(503, message="gotta override this")
 
-def error_response(message, status=400):
-    data = {"error": message}
-    return json_response(data, status)
-
-
-def jobs_or_history(prog, clusterid, procid, constraint, projection):
-    cmd = [prog]
-    try:
+        cmd = [self.executable]
         if procid is not None:
             if clusterid is None:
-               return error_response("clusterid not specified")
+                abort(400, message="clusterid not specified")
             cmd.append("%d.%d" % (clusterid, procid))
         elif clusterid is not None:
             cmd.append("%d" % clusterid)
-    except (ValueError, TypeError) as e:
-        # lazy
-        return error_response("Invalid value for clusterid or procid: %s" % e)
 
-    if constraint:
-        cmd.append("-constraint")
-        cmd.append(constraint)
+        if constraint:
+            cmd.append("-constraint")
+            cmd.append(constraint)
 
-    split_projection = []
-    if projection:
-        split_projection = projection.split(",")
-        cmd.extend(["-af:jt"] + split_projection)
-    else:
-        cmd.append("-json")
+        split_projection = []
+        if projection:
+            split_projection = projection.split(",")
+            cmd.extend(["-af:jt"] + split_projection)
+        else:
+            cmd.append("-json")
 
-    completed = subprocess.run(cmd, capture_output=True, encoding="utf-8")
-    if completed.returncode != 0:
-        return error_response(completed.stderr)
+        completed = subprocess.run(cmd, capture_output=True, encoding="utf-8")
+        if completed.returncode != 0:
+            # lazy
+            abort(400, message=completed.stderr)
 
-    # super lazy here - the real deal would use the API anyway
-    if not projection:
-        classads = json.loads(completed.stdout)
-        if not classads:
-            return error_response("No jobs found", 404)
-        data = []
-        for ad in classads:
-            job_data = {k.lower(): v for k, v in ad.items()}
-            job_data["jobid"] = "%s.%s" % (job_data["clusterid"], job_data["procid"])
-            data.append(job_data)
-        return json_response(data)
-    else:
-        data = []
-        for line in completed.stdout.split("\n"):
-            if not line: continue
-            keys = ["jobid"] + split_projection
-            values = line.split("\t")
-            job_data = dict(zip(keys, values))
-            data.append(job_data)
-        return json_response(data)
-
-
-@app.route("/v1/jobs")
-@app.route("/v1/jobs/<int:clusterid>")
-@app.route("/v1/jobs/<int:clusterid>/<int:procid>")
-def jobs(clusterid=None, procid=None):
-    constraint = request.args.get("constraint", "")
-    projection = request.args.get("projection", "").lower()
-    return jobs_or_history("condor_q", clusterid=clusterid, procid=procid, constraint=constraint, projection=projection)
+        # super lazy here - the real deal would use the API anyway
+        if not projection:
+            classads = json.loads(completed.stdout)
+            if not classads:
+                abort(404, message="No jobs found")
+            data = []
+            for ad in classads:
+                job_data = {k.lower(): v for k, v in ad.items()}
+                job_data["jobid"] = "%s.%s" % (job_data["clusterid"], job_data["procid"])
+                data.append(job_data)
+            return data
+        else:
+            split_output = completed.stdout.split("\n")
+            if not split_output:
+                abort(404, message="No jobs found")
+            data = []
+            for line in completed.stdout.split("\n"):
+                if not line: continue
+                keys = ["jobid"] + split_projection
+                values = line.split("\t")
+                job_data = dict(zip(keys, values))
+                data.append(job_data)
+            return data
 
 
-@app.route("/v1/history")
-@app.route("/v1/history/<int:clusterid>")
-@app.route("/v1/history/<int:clusterid>/<int:procid>")
-def history(clusterid=None, procid=None):
-    constraint = request.args.get("constraint", "")
-    projection = request.args.get("projection", "").lower()
-    return jobs_or_history("condor_history", clusterid=clusterid, procid=procid, constraint=constraint, projection=projection)
+class JobsResource(Resource, JobInfo):
+    executable = "condor_q"
+
+    def get(self, clusterid=None, procid=None):
+        parser = reqparse.RequestParser(trim=True)
+        parser.add_argument("projection", default="")
+        parser.add_argument("constraint", default="")
+        args = parser.parse_args()
+        return self.query(clusterid, procid, projection=args.projection, constraint=args.constraint)
+
+
+class HistoryResource(Resource, JobInfo):
+    executable = "condor_history"
+
+    def get(self, clusterid=None, procid=None):
+        parser = reqparse.RequestParser(trim=True)
+        parser.add_argument("projection", default="")
+        parser.add_argument("constraint", default="")
+        args = parser.parse_args()
+        return self.query(clusterid, procid, projection=args.projection, constraint=args.constraint)
+
+
+
+api.add_resource(JobsResource, "/v1/jobs", "/v1/jobs/<int:clusterid>", "/v1/jobs/<int:clusterid>/<int:procid>")
+api.add_resource(HistoryResource, "/v1/history", "/v1/history/<int:clusterid>", "/v1/history/<int:clusterid>/<int:procid>")
+
