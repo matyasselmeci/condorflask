@@ -27,12 +27,9 @@ class JobInfo:
             cmd.append("-constraint")
             cmd.append(constraint)
 
-        split_projection = []
+        cmd.append("-json")
         if projection:
-            split_projection = projection.split(",")
-            cmd.extend(["-af:jt"] + split_projection)
-        else:
-            cmd.append("-json")
+            cmd.extend(["-attributes", projection + ",clusterid,procid"])
 
         completed = subprocess.run(cmd, capture_output=True, encoding="utf-8")
         if completed.returncode != 0:
@@ -40,28 +37,15 @@ class JobInfo:
             abort(400, message=completed.stderr)
 
         # super lazy here - the real deal would use the API anyway
-        if not projection:
-            classads = json.loads(completed.stdout)
-            if not classads:
-                abort(404, message="No jobs found")
-            data = []
-            for ad in classads:
-                job_data = {k.lower(): v for k, v in ad.items()}
-                job_data["jobid"] = "%s.%s" % (job_data["clusterid"], job_data["procid"])
-                data.append(job_data)
-            return data
-        else:
-            split_output = completed.stdout.split("\n")
-            if not split_output:
-                abort(404, message="No jobs found")
-            data = []
-            for line in completed.stdout.split("\n"):
-                if not line: continue
-                keys = ["jobid"] + split_projection
-                values = line.split("\t")
-                job_data = dict(zip(keys, values))
-                data.append(job_data)
-            return data
+        classads = json.loads(completed.stdout)
+        if not classads:
+            abort(404, message="No jobs found")
+        data = []
+        for ad in classads:
+            job_data = {k.lower(): v for k, v in ad.items()}
+            job_data["jobid"] = "%s.%s" % (job_data["clusterid"], job_data["procid"])
+            data.append(job_data)
+        return data
 
 
 class JobsResource(Resource, JobInfo):
