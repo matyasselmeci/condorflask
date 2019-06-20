@@ -8,14 +8,14 @@ app = Flask(__name__)
 api = Api(app)
 
 
-class JobInfo:
+class JobsBaseResource(Resource):
     executable = ""
 
     def query(self, clusterid, procid, constraint, projection):
         if not self.executable:
             abort(503, message="gotta override this")
 
-        cmd = [self.executable]
+        cmd = [self.executable, "-json"]
         if procid is not None:
             if clusterid is None:
                 abort(400, message="clusterid not specified")
@@ -24,10 +24,8 @@ class JobInfo:
             cmd.append("%d" % clusterid)
 
         if constraint:
-            cmd.append("-constraint")
-            cmd.append(constraint)
+            cmd.extend(["-constraint", constraint])
 
-        cmd.append("-json")
         if projection:
             cmd.extend(["-attributes", projection + ",clusterid,procid"])
 
@@ -47,30 +45,21 @@ class JobInfo:
             data.append(job_data)
         return data
 
+    def get(self, clusterid=None, procid=None):
+        parser = reqparse.RequestParser(trim=True)
+        parser.add_argument("projection", default="")
+        parser.add_argument("constraint", default="")
+        args = parser.parse_args()
+        return self.query(clusterid, procid, projection=args.projection, constraint=args.constraint)
 
-class JobsResource(Resource, JobInfo):
+
+class JobsResource(JobsBaseResource):
     executable = "condor_q"
 
-    def get(self, clusterid=None, procid=None):
-        parser = reqparse.RequestParser(trim=True)
-        parser.add_argument("projection", default="")
-        parser.add_argument("constraint", default="")
-        args = parser.parse_args()
-        return self.query(clusterid, procid, projection=args.projection, constraint=args.constraint)
 
-
-class HistoryResource(Resource, JobInfo):
+class HistoryResource(JobsBaseResource):
     executable = "condor_history"
-
-    def get(self, clusterid=None, procid=None):
-        parser = reqparse.RequestParser(trim=True)
-        parser.add_argument("projection", default="")
-        parser.add_argument("constraint", default="")
-        args = parser.parse_args()
-        return self.query(clusterid, procid, projection=args.projection, constraint=args.constraint)
-
 
 
 api.add_resource(JobsResource, "/v1/jobs", "/v1/jobs/<int:clusterid>", "/v1/jobs/<int:clusterid>/<int:procid>")
 api.add_resource(HistoryResource, "/v1/history", "/v1/history/<int:clusterid>", "/v1/history/<int:clusterid>/<int:procid>")
-
