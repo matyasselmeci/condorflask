@@ -12,24 +12,47 @@ api = Api(app)
 class JobsBaseResource(Resource):
     executable = ""
 
-    def query(self, clusterid, procid, constraint, projection):
+    def query(self, clusterid, procid, constraint, projection, attribute):
         if not self.executable:
             abort(503, message="gotta override this")
 
         cmd = [self.executable, "-json"]
-        if procid is not None:
-            if clusterid is None:
-                abort(400, message="clusterid not specified")
-            cmd.append("%d.%d" % (clusterid, procid))
-        elif clusterid is not None:
-            cmd.append("%d" % clusterid)
+        if clusterid is not None:
+            x = "%d" % clusterid
+            if procid is not None:
+                x += ".%d" % procid
+            cmd.append(x)
 
         if constraint:
             cmd.extend(["-constraint", constraint])
 
-        if projection:
+        if attribute:
+            cmd.extend(["-attributes", attribute])
+        elif projection:
             cmd.extend(["-attributes", projection + ",clusterid,procid"])
 
+        classads = self._run_cmd(cmd)
+
+        if attribute:
+            data = classads[0][attribute]
+            return data
+        data = []
+        for ad in classads:
+            job_data = dict()
+            job_data["classad"] = {k.lower(): v for k, v in ad.items()}
+            job_data["jobid"] = "%s.%s" % (job_data["classad"]["clusterid"], job_data["classad"]["procid"])
+            data.append(job_data)
+        return data
+
+    def get(self, clusterid=None, procid=None, attribute=None):
+        parser = reqparse.RequestParser(trim=True)
+        parser.add_argument("projection", default="")
+        parser.add_argument("constraint", default="")
+        args = parser.parse_args()
+        return self.query(clusterid, procid, projection=args.projection, constraint=args.constraint,
+                          attribute=attribute)
+
+    def _run_cmd(self, cmd):
         completed = subprocess.run(cmd, capture_output=True, encoding="utf-8")
         if completed.returncode != 0:
             # lazy
@@ -38,20 +61,9 @@ class JobsBaseResource(Resource):
         # super lazy here - the real deal would use the API anyway
         classads = json.loads(completed.stdout)
         if not classads:
-            abort(404, message="No jobs found")
-        data = []
-        for ad in classads:
-            job_data = {k.lower(): v for k, v in ad.items()}
-            job_data["jobid"] = "%s.%s" % (job_data["clusterid"], job_data["procid"])
-            data.append(job_data)
-        return data
+            abort(404, message="No job(s) found")
 
-    def get(self, clusterid=None, procid=None):
-        parser = reqparse.RequestParser(trim=True)
-        parser.add_argument("projection", default="")
-        parser.add_argument("constraint", default="")
-        args = parser.parse_args()
-        return self.query(clusterid, procid, projection=args.projection, constraint=args.constraint)
+        return classads
 
 
 class JobsResource(JobsBaseResource):
@@ -98,6 +110,10 @@ class ConfigResource(Resource):
         return data
 
 
-api.add_resource(JobsResource, "/v1/jobs", "/v1/jobs/<int:clusterid>", "/v1/jobs/<int:clusterid>/<int:procid>")
-api.add_resource(HistoryResource, "/v1/history", "/v1/history/<int:clusterid>", "/v1/history/<int:clusterid>/<int:procid>")
+api.add_resource(JobsResource, "/v1/jobs", "/v1/jobs/<int:clusterid>",
+                 "/v1/jobs/<int:clusterid>/<int:procid>",
+                 "/v1/jobs/<int:clusterid>/<int:procid>/<attribute>")
+api.add_resource(HistoryResource, "/v1/history", "/v1/history/<int:clusterid>",
+                 "/v1/history/<int:clusterid>/<int:procid>",
+                 "/v1/history/<int:clusterid>/<int:procid>/<attribute>")
 api.add_resource(ConfigResource, "/v1/config", "/v1/config/<attribute>")
