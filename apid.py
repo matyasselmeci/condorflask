@@ -9,12 +9,28 @@ app = Flask(__name__)
 api = Api(app)
 
 
+def validate_attribute(attribute):
+    """Return True if the given attribute is a valid classad attribute name"""
+    return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", attribute))
+
+
+def validate_projection(projection):
+    """Return True if the given projection has a valid format, i.e.
+    is a comma-separated list of valid attribute names.
+    """
+    return all(validate_attribute(x) for x in projection.split(","))
+
+
 class JobsBaseResource(Resource):
+    """Base class for endpoints for accessing current and historical job
+    information. This class must be overridden to specify `executable`.
+
+    """
     executable = ""
 
     def query(self, clusterid, procid, constraint, projection, attribute):
         if not self.executable:
-            abort(503, message="gotta override this")
+            raise ValueError("Need to override executable")
 
         cmd = [self.executable, "-json"]
         if clusterid is not None:
@@ -27,8 +43,12 @@ class JobsBaseResource(Resource):
             cmd.extend(["-constraint", constraint])
 
         if attribute:
+            if not validate_attribute(attribute):
+                abort(400, message="Invalid attribute")
             cmd.extend(["-attributes", attribute])
         elif projection:
+            if not validate_projection(projection):
+                abort(400, message="Invalid projection: must be a comma-separated list of classad attributes")
             cmd.extend(["-attributes", projection + ",clusterid,procid"])
 
         classads = self._run_cmd(cmd)
@@ -67,18 +87,30 @@ class JobsBaseResource(Resource):
 
 
 class JobsResource(JobsBaseResource):
+    """Endpoints for accessing information about jobs in the queue
+    """
     executable = "condor_q"
 
 
 class HistoryResource(JobsBaseResource):
+    """Endpoints for accessing historical job information
+    """
     executable = "condor_history"
 
 
 class StatusResource(Resource):
+    """Endpoints for accessing condor_status information
+    """
     def get(self, name=None):
         parser = reqparse.RequestParser(trim=True)
         parser.add_argument("projection", default="")
         parser.add_argument("constraint", default="")
+        parser.add_argument("query", choices=[
+            "absent", "avail", "ckptsrvr", "claimed", "cod", "collector",
+            "data", "defrag", "java", "vm", "license", "master", "grid",
+            "run", "schedd", "server", "startd", "generic", "negotiator",
+            "storage", "any", "state", "submitters"
+        ])
         args = parser.parse_args()
 
         cmd = ["condor_status", "-json"]
@@ -86,9 +118,14 @@ class StatusResource(Resource):
         if name:
             cmd.append(name)
 
+        if args.query:
+            cmd.append("-%s" % args.query)
+
         if args.constraint:
             cmd.extend(["-constraint", args.constraint])
         if args.projection:
+            if not validate_projection(args.projection):
+                abort(400, message="Invalid projection: must be a comma-separated list of classad attributes")
             cmd.extend(["-attributes", args.projection + ",name"])
 
         completed = subprocess.run(cmd, capture_output=True, encoding="utf-8")
@@ -116,6 +153,8 @@ class StatusResource(Resource):
 
 
 class ConfigResource(Resource):
+    """Endpoints for accessing condor config
+    """
     def get(self, attribute=None):
         parser = reqparse.RequestParser(trim=True)
         parser.add_argument("daemon", choices=["master", "schedd", "startd", "collector", "negotiator"])
@@ -126,6 +165,8 @@ class ConfigResource(Resource):
             cmd.append("-%s" % args.daemon)
 
         if attribute:
+            if not validate_attribute(attribute):
+                abort(400, message="Invalid attribute")
             cmd.append(attribute)
         else:
             cmd.append("-dump")
@@ -151,11 +192,19 @@ class ConfigResource(Resource):
         return data
 
 
-api.add_resource(JobsResource, "/v1/jobs", "/v1/jobs/<int:clusterid>",
+api.add_resource(JobsResource,
+                 "/v1/jobs",
+                 "/v1/jobs/<int:clusterid>",
                  "/v1/jobs/<int:clusterid>/<int:procid>",
                  "/v1/jobs/<int:clusterid>/<int:procid>/<attribute>")
-api.add_resource(HistoryResource, "/v1/history", "/v1/history/<int:clusterid>",
+api.add_resource(HistoryResource,
+                 "/v1/history",
+                 "/v1/history/<int:clusterid>",
                  "/v1/history/<int:clusterid>/<int:procid>",
                  "/v1/history/<int:clusterid>/<int:procid>/<attribute>")
-api.add_resource(StatusResource, "/v1/status", "/v1/status/<name>")
-api.add_resource(ConfigResource, "/v1/config", "/v1/config/<attribute>")
+api.add_resource(StatusResource,
+                 "/v1/status",
+                 "/v1/status/<name>")
+api.add_resource(ConfigResource,
+                 "/v1/config",
+                 "/v1/config/<attribute>")
