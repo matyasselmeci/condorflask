@@ -78,12 +78,17 @@ class JobsBaseResource(Resource):
             # lazy
             abort(400, message=completed.stderr)
 
-        # super lazy here - the real deal would use the API anyway
-        classads = json.loads(completed.stdout)
-        if not classads:
+        if not completed.stdout.strip():
             abort(404, message="No job(s) found")
-
-        return classads
+        try:
+            classads = json.loads(completed.stdout)
+            if not classads:
+                abort(404, message="No job(s) found")
+            return classads
+        except json.JSONDecodeError:
+            abort(400, message="Unparseable result from %s\n"
+                               "Output: %s\n"
+                               "Error: %s" % (self.executable, completed.stdout, completed.stderr))
 
 
 class V1JobsResource(JobsBaseResource):
@@ -224,10 +229,18 @@ class V1StatusResource(Resource):
             else:
                 abort(400, message=completed.stderr)
 
-        # super lazy here - the real deal would use the API anyway
-        classads = json.loads(completed.stdout)
-        if not classads:
+        if not completed.stdout.strip():
             abort(404, message="No ad(s) found")
+        classads = {}
+        try:
+            classads = json.loads(completed.stdout)
+            if not classads:
+                abort(404, message="No ad(s) found")
+            return classads
+        except json.JSONDecodeError:
+            abort(400, message="Unparseable result from %s\n"
+                               "Output: %s\n"
+                               "Error: %s" % (self.executable, completed.stdout, completed.stderr))
 
         # lowercase all the keys
         classads_lower = [{k.lower(): v for k, v in ad.items()} for ad in classads]
