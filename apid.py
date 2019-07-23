@@ -86,22 +86,110 @@ class JobsBaseResource(Resource):
         return classads
 
 
-class JobsResource(JobsBaseResource):
+class V1JobsResource(JobsBaseResource):
     """Endpoints for accessing information about jobs in the queue
+
+    This implements the following endpoint:
+
+        GET /v1/jobs{/clusterid}{/procid}{/attribute}{?projection,constraint}
+        If `clusterid`, `procid`, and `attribute` are specified, then it
+        returns the value of that attribute.  Otherwise it returns an array
+        of one or more objects of the form:
+
+            {
+              "jobid": "123.45",
+              "classad": { (json-encoded classad object) }
+            }
+
+        If `clusterid` and `procid` are specified, then the array will contain
+        a single job.  If only `clusterid` is specified, then the array will
+        contain all jobs within that cluster.  If none of these are specified,
+        the array will contain all jobs in the queue.
+
+        `projection` is one or more comma-separated attributes; if specified,
+        only those attributes, plus `clusterid` and `procid` will be in the
+        `classad` object of each job.  `projection` is ignored if `attribute`
+        is specified.
+
+        `constraint` is a classad expression restricting which jobs to include
+        in the result.  The constraint is always applied, even if `clusterid`
+        and `procid` are specified.
+
+        Returns 404 if no matching jobs are found.  This includes zero jobs
+        matching the constraint.
+
     """
     executable = "condor_q"
 
 
-class HistoryResource(JobsBaseResource):
+class V1HistoryResource(JobsBaseResource):
     """Endpoints for accessing historical job information
+
+    This implements the following endpoint:
+
+        GET /v1/history{/clusterid}{/procid}{/attribute}{?projection,constraint}
+        If `clusterid`, `procid`, and `attribute` are specified, then it
+        returns the value of that attribute.  Otherwise it returns an array
+        of one or more objects of the form:
+
+            {
+              "jobid": "123.45",
+              "classad": { (classad object) }
+            }
+
+        If `clusterid` and `procid` are specified, then the array will contain
+        a single job.  If only `clusterid` is specified, then the array will
+        contain all jobs within that cluster.  If none of these are specified,
+        the array will contain all jobs in the history.
+
+        `projection` is one or more comma-separated attributes; if specified,
+        only those attributes, plus `clusterid` and `procid` will be in the
+        `classad` object of each job.  `projection` is ignored if `attribute`
+        is specified.
+
+        `constraint` is a classad expression restricting which jobs to include
+        in the result.  The constraint is always applied, even if `clusterid`
+        and `procid` are specified.
+
+        Returns 404 if no matching jobs are found.  This includes zero jobs
+        matching the constraint.
+
     """
     executable = "condor_history"
 
 
-class StatusResource(Resource):
+class V1StatusResource(Resource):
     """Endpoints for accessing condor_status information
+
+    This implements the following endpoint:
+
+        GET /v1/status{/name}{?projection,constraint,query}
+        This returns an array of objects of the following form:
+
+            {
+              "name": "<name classad attribute>",
+              "classad": { <classad object> }
+            }
+
+        `name` is a specific host or slot to query.  If not specified, all
+        matching ads are returned.
+
+        `query` is the type of ad to query; see the "Query options" in the
+        condor_status(1) manpage.  "startd" is the default.
+
+        `projection` is one or more comma-separated attributes; if specified,
+        only those attributes, plus `name` and `procid` will be in the
+        `classad` object of each job.
+
+        `constraint` is a classad expression restricting which ads to include
+        in the result.
+
+        Returns 404 if no matching ads are found.  This includes zero ads
+        matching the constraint.
+
     """
     def get(self, name=None):
+        """GET handler"""
         parser = reqparse.RequestParser(trim=True)
         parser.add_argument("projection", default="")
         parser.add_argument("constraint", default="")
@@ -152,10 +240,31 @@ class StatusResource(Resource):
         return data
 
 
-class ConfigResource(Resource):
+class V1ConfigResource(Resource):
     """Endpoints for accessing condor config
+
+    This implements the following endpoint:
+
+        GET /v1/config{/attribute}{?daemon}
+
+        If `attribute` is specified, returns the value of the specific
+        attribute in the condor config.  If not specified, returns an object
+        of the form:
+
+            {
+              "attribute1": "value1",
+              "attribute2": "value2",
+              ...
+            }
+
+        If `daemon` is specified, query the given running daemon; otherwise,
+        query the static config files.
+
+        Returns 404 if `attribute` is specified but the attribute is undefined.
+
     """
     def get(self, attribute=None):
+        """GET handler"""
         parser = reqparse.RequestParser(trim=True)
         parser.add_argument("daemon", choices=["master", "schedd", "startd", "collector", "negotiator"])
         args = parser.parse_args()
@@ -191,19 +300,19 @@ class ConfigResource(Resource):
             return data
 
 
-api.add_resource(JobsResource,
+api.add_resource(V1JobsResource,
                  "/v1/jobs",
                  "/v1/jobs/<int:clusterid>",
                  "/v1/jobs/<int:clusterid>/<int:procid>",
                  "/v1/jobs/<int:clusterid>/<int:procid>/<attribute>")
-api.add_resource(HistoryResource,
+api.add_resource(V1HistoryResource,
                  "/v1/history",
                  "/v1/history/<int:clusterid>",
                  "/v1/history/<int:clusterid>/<int:procid>",
                  "/v1/history/<int:clusterid>/<int:procid>/<attribute>")
-api.add_resource(StatusResource,
+api.add_resource(V1StatusResource,
                  "/v1/status",
                  "/v1/status/<name>")
-api.add_resource(ConfigResource,
+api.add_resource(V1ConfigResource,
                  "/v1/config",
                  "/v1/config/<attribute>")
