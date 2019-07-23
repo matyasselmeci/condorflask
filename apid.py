@@ -179,17 +179,16 @@ class ConfigResource(Resource):
             else:
                 abort(400, message=completed.stderr)
 
-        data = {}
         if attribute:
-            data[attribute.lower()] = completed.stdout.rstrip("\n")
+            return completed.stdout.rstrip("\n")
         else:
+            data = {}
             for line in completed.stdout.split("\n"):
                 if line.startswith("#"): continue
                 if " = " not in line: continue
                 key, value = line.split(" = ", 1)
                 data[key.lower()] = value
-
-        return data
+            return data
 
 
 api.add_resource(JobsResource,
