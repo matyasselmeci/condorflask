@@ -2,7 +2,7 @@ import re
 import subprocess
 import json
 
-from flask import Flask, Response, request
+from flask import Flask
 from flask_restful import Resource, Api, abort, reqparse
 
 app = Flask(__name__)
