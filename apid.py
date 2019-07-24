@@ -1,6 +1,6 @@
-# coding=utf-8
+# -*- coding=utf-8 -*-
 """*** apid.py ***
-Experimental REST-based API for HTCondor.
+Proof-of-concept REST-based API for HTCondor, based on the command-line tools.
 
 Currently allows read-only queries for jobs (in-queue and historical),
 configuration, and machine status.
