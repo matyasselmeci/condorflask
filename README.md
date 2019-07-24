@@ -5,11 +5,29 @@ Proof-of-concept REST-based API for HTCondor, based on the command-line tools.
 Currently allows read-only queries for jobs (in-queue and historical),
 configuration, and machine status.
 
+
+Installation
+------------
+Create a virtualenv then `pip install -r requirements.txt`.  To run using the
+built-in Flask server (not for production), run
+
+    FLASK_APP=apid.py flask run -p 9680
+
+For additional scalability, run using a WSGI server such as gunicorn:
+
+    gunicorn -w4 -b127.0.0.1:9680 apid:app
+
+
+These commands run on port 9680.
+
+
+Queries
+-------
 The following queries are implemented:
 
 
-jobs and history
-----------------
+### jobs and history
+
 Access job information (i.e. `condor_q` and `condor_history`).
 These behave exactly the same, except `jobs` queries jobs in the queue,
 and `history` queries jobs that have left the queue.
@@ -44,8 +62,8 @@ Returns 404 if no matching jobs are found.  This includes zero jobs
 matching the constraint.
 
 
-config
-------
+### config
+
 Access config information (i.e. `condor_config_val`).
 
     GET /v1/config{/attribute}{?daemon}
@@ -66,8 +84,8 @@ query the static config files.
 Returns 404 if `attribute` is specified but the attribute is undefined.
 
 
-status
-------
+### status
+
 Access host information (i.e. `condor_status`).
 
     GET /v1/status{/name}{?projection,constraint,query}
