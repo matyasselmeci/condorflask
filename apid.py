@@ -1,9 +1,17 @@
+# coding=utf-8
+"""*** apid.py ***
+Experimental REST-based API for HTCondor.
+
+Currently allows read-only queries for jobs (in-queue and historical),
+configuration, and machine status.
+"""
 import re
 import subprocess
 import json
 
 from flask import Flask
 from flask_restful import Resource, Api, abort, reqparse
+
 
 app = Flask(__name__)
 api = Api(app)
@@ -97,6 +105,7 @@ class V1JobsResource(JobsBaseResource):
     This implements the following endpoint:
 
         GET /v1/jobs{/clusterid}{/procid}{/attribute}{?projection,constraint}
+
         If `clusterid`, `procid`, and `attribute` are specified, then it
         returns the value of that attribute.  Otherwise it returns an array
         of one or more objects of the form:
@@ -133,6 +142,7 @@ class V1HistoryResource(JobsBaseResource):
     This implements the following endpoint:
 
         GET /v1/history{/clusterid}{/procid}{/attribute}{?projection,constraint}
+
         If `clusterid`, `procid`, and `attribute` are specified, then it
         returns the value of that attribute.  Otherwise it returns an array
         of one or more objects of the form:
@@ -169,6 +179,7 @@ class V1StatusResource(Resource):
     This implements the following endpoint:
 
         GET /v1/status{/name}{?projection,constraint,query}
+
         This returns an array of objects of the following form:
 
             {
@@ -329,3 +340,10 @@ api.add_resource(V1StatusResource,
 api.add_resource(V1ConfigResource,
                  "/v1/config",
                  "/v1/config/<attribute>")
+
+PUBLIC_ENDPOINTS = [
+    "V1JobsResource",
+    "V1ConfigResource",
+    "V1HistoryResource",
+    "V1StatusResource",
+]
