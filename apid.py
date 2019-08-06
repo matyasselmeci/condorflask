@@ -6,12 +6,19 @@ Currently allows read-only queries for jobs (in-queue and historical),
 configuration, and machine status.
 """
 import re
-import subprocess
 import json
+try:
+    from typing import Dict, List
+except ImportError: pass
+
+import classad
+import htcondor
+from htcondor import AdTypes, Collector, DaemonTypes, RemoteParam
 
 from flask import Flask
 from flask_restful import Resource, Api, abort, reqparse
 
+import utils
 
 app = Flask(__name__)
 api = Api(app)
@@ -34,41 +41,46 @@ class JobsBaseResource(Resource):
     information. This class must be overridden to specify `executable`.
 
     """
-    executable = ""
+    querytype = None
 
     def query(self, clusterid, procid, constraint, projection, attribute):
-        if not self.executable:
-            raise ValueError("Need to override executable")
-
-        cmd = [self.executable, "-json"]
-        if clusterid is not None:
-            x = "%d" % clusterid
-            if procid is not None:
-                x += ".%d" % procid
-            cmd.append(x)
-
+        schedd = utils.get_schedd()
+        requirements = "true"
+        if clusterid:
+            requirements += " && clusterid==%d" % clusterid
+        if procid:
+            requirements += " && procid==%d" % procid
         if constraint:
-            cmd.extend(["-constraint", constraint])
+            requirements += " && %s" % constraint
 
         if attribute:
             if not validate_attribute(attribute):
                 abort(400, message="Invalid attribute")
-            cmd.extend(["-attributes", attribute])
+            projection = [attribute, "clusterid", "procid"]
         elif projection:
             if not validate_projection(projection):
                 abort(400, message="Invalid projection: must be a comma-separated list of classad attributes")
-            cmd.extend(["-attributes", projection + ",clusterid,procid"])
+            projection = set(projection.split(","))
+            projection.add("clusterid")
+            projection.add("procid")
+        else:
+            projection = set()
 
-        classads = self._run_cmd(cmd)
+        if self.querytype == "history":
+            classads = schedd.history(requirements=requirements, projection=list(projection))
+        elif self.querytype == "xquery":
+            classads = schedd.xquery(requirements=requirements, projection=list(projection))
+        else:
+            assert False, "Invalid querytype %r" % self.querytype
 
-        if attribute:
-            data = classads[0][attribute]
-            return data
         data = []
-        for ad in classads:
+        ad_dicts = utils.classads_to_dicts(classads)
+        for ad in ad_dicts:
+            if attribute:
+                return ad[attribute]
             job_data = dict()
-            job_data["classad"] = {k.lower(): v for k, v in ad.items()}
-            job_data["jobid"] = "%s.%s" % (job_data["classad"]["clusterid"], job_data["classad"]["procid"])
+            job_data["classad"] = ad
+            job_data["jobid"] = "%s.%s" % (ad["clusterid"], ad["procid"])
             data.append(job_data)
         return data
 
@@ -79,24 +91,6 @@ class JobsBaseResource(Resource):
         args = parser.parse_args()
         return self.query(clusterid, procid, projection=args.projection, constraint=args.constraint,
                           attribute=attribute)
-
-    def _run_cmd(self, cmd):
-        completed = subprocess.run(cmd, capture_output=True, encoding="utf-8")
-        if completed.returncode != 0:
-            # lazy
-            abort(400, message=completed.stderr)
-
-        if not completed.stdout.strip():
-            abort(404, message="No job(s) found")
-        try:
-            classads = json.loads(completed.stdout)
-            if not classads:
-                abort(404, message="No job(s) found")
-            return classads
-        except json.JSONDecodeError:
-            abort(400, message="Unparseable result from %s\n"
-                               "Output: %s\n"
-                               "Error: %s" % (self.executable, completed.stdout, completed.stderr))
 
 
 class V1JobsResource(JobsBaseResource):
@@ -133,7 +127,7 @@ class V1JobsResource(JobsBaseResource):
         matching the constraint.
 
     """
-    executable = "condor_q"
+    querytype = "xquery"
 
 
 class V1HistoryResource(JobsBaseResource):
@@ -170,7 +164,7 @@ class V1HistoryResource(JobsBaseResource):
         matching the constraint.
 
     """
-    executable = "condor_history"
+    querytype = "history"
 
 
 class V1StatusResource(Resource):
@@ -178,7 +172,7 @@ class V1StatusResource(Resource):
 
     This implements the following endpoint:
 
-        GET /v1/status{/name}{?projection,constraint,query}
+        GET /v1/status{?projection,constraint,query}
 
         This returns an array of objects of the following form:
 
@@ -204,61 +198,57 @@ class V1StatusResource(Resource):
         matching the constraint.
 
     """
+    AD_TYPES_MAP = {
+        "accounting": AdTypes.Accounting,
+        "any": AdTypes.Any,
+        "collector": AdTypes.Collector,
+        "credd": AdTypes.Credd,
+        "defrag": AdTypes.Defrag,
+        "generic": AdTypes.Generic,
+        "grid": AdTypes.Grid,
+        "had": AdTypes.HAD,
+        "license": AdTypes.License,
+        "master": AdTypes.Master,
+        "negotiator": AdTypes.Negotiator,
+        "schedd": AdTypes.Schedd,
+        "startd": AdTypes.Startd,
+        "submitter": AdTypes.Submitter,
+        "submitters": AdTypes.Submitter,  # Original API & command-line tools used "submitters"
+    }
+
     def get(self, name=None):
         """GET handler"""
         parser = reqparse.RequestParser(trim=True)
         parser.add_argument("projection", default="")
         parser.add_argument("constraint", default="")
-        parser.add_argument("query", choices=[
-            "absent", "avail", "ckptsrvr", "claimed", "cod", "collector",
-            "data", "defrag", "java", "vm", "license", "master", "grid",
-            "run", "schedd", "server", "startd", "generic", "negotiator",
-            "storage", "any", "state", "submitters"
-        ])
+        parser.add_argument("query", choices=list(self.AD_TYPES_MAP.keys()), default="any")
         args = parser.parse_args()
 
-        cmd = ["condor_status", "-json"]
+        collector = Collector()
+        ad_type = self.AD_TYPES_MAP[args.query]
+        projection = []
 
-        if name:
-            cmd.append(name)
-
-        if args.query:
-            cmd.append("-%s" % args.query)
-
-        if args.constraint:
-            cmd.extend(["-constraint", args.constraint])
         if args.projection:
             if not validate_projection(args.projection):
                 abort(400, message="Invalid projection: must be a comma-separated list of classad attributes")
-            cmd.extend(["-attributes", args.projection + ",name"])
+            projection = ",".split(args.projection)
 
-        completed = subprocess.run(cmd, capture_output=True, encoding="utf-8")
-        if completed.returncode != 0:
-            # lazy
-            if re.search(r"^condor_status: unknown host", completed.stderr, re.MULTILINE):
-                abort(404, message=completed.stderr)
-            else:
-                abort(400, message=completed.stderr)
+        constraint = args.constraint
+        if name:
+            constraint = "(name == \"%s\")" % name
+            if args.constraint:
+                constraint += " && (%s)" % args.constraint
 
-        if not completed.stdout.strip():
-            abort(404, message="No ad(s) found")
-        classads = {}
+        classads = []  # type: List[classad.ClassAd]
         try:
-            classads = json.loads(completed.stdout)
-            if not classads:
-                abort(404, message="No ad(s) found")
-            return classads
-        except json.JSONDecodeError:
-            abort(400, message="Unparseable result from %s\n"
-                               "Output: %s\n"
-                               "Error: %s" % (self.executable, completed.stdout, completed.stderr))
-
-        # lowercase all the keys
-        classads_lower = [{k.lower(): v for k, v in ad.items()} for ad in classads]
+            classads = collector.query(ad_type, constraint=constraint, projection=projection)
+        except RuntimeError as err:
+            abort(400, message=str(err))  # LAZY
 
         data = [
             {"name": ad["name"],
-             "classad": ad} for ad in classads_lower
+             "classad": ad} for ad in
+                utils.classads_to_dicts(classads)
         ]
 
         return data
@@ -287,41 +277,38 @@ class V1ConfigResource(Resource):
         Returns 404 if `attribute` is specified but the attribute is undefined.
 
     """
+    DAEMON_TYPES_MAP = {
+        "collector": DaemonTypes.Collector,
+        "master": DaemonTypes.Master,
+        "negotiator": DaemonTypes.Negotiator,
+        "schedd": DaemonTypes.Schedd,
+        "startd": DaemonTypes.Startd,
+    }
+
     def get(self, attribute=None):
         """GET handler"""
         parser = reqparse.RequestParser(trim=True)
-        parser.add_argument("daemon", choices=["master", "schedd", "startd", "collector", "negotiator"])
+        parser.add_argument("daemon", choices=list(self.DAEMON_TYPES_MAP.keys()))
         args = parser.parse_args()
 
-        cmd = ["condor_config_val", "-raw"]
         if args.daemon:
-            cmd.append("-%s" % args.daemon)
+            daemon_ad = Collector().locate(self.DAEMON_TYPES_MAP[args.daemon])
+            param = RemoteParam(daemon_ad)
+        else:
+            htcondor.reload_config()
+            param = htcondor.param
 
         if attribute:
             if not validate_attribute(attribute):
                 abort(400, message="Invalid attribute")
-            cmd.append(attribute)
-        else:
-            cmd.append("-dump")
-
-        completed = subprocess.run(cmd, capture_output=True, encoding="utf-8")
-        if completed.returncode != 0:
-            # lazy
-            if re.search(r"^Not defined:", completed.stderr, re.MULTILINE):
-                abort(404, message=completed.stderr)
-            else:
-                abort(400, message=completed.stderr)
 
         if attribute:
-            return completed.stdout.rstrip("\n")
-        else:
-            data = {}
-            for line in completed.stdout.split("\n"):
-                if line.startswith("#"): continue
-                if " = " not in line: continue
-                key, value = line.split(" = ", 1)
-                data[key.lower()] = value
-            return data
+            try:
+                return param[attribute]
+            except KeyError as err:
+                abort(404, message=str(err))
+
+        return utils.deep_lcasekeys(param)
 
 
 api.add_resource(V1JobsResource,
