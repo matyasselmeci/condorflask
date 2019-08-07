@@ -23,7 +23,7 @@ These commands run on port 9680.
 
 Queries
 -------
-The following queries are implemented:
+The following queries are implemented.  Arguments in brackets `{}` are optional:
 
 
 ### jobs and history
