@@ -311,6 +311,14 @@ class V1ConfigResource(Resource):
         return utils.deep_lcasekeys(param)
 
 
+class RootResource(Resource):
+    def get(self):
+        return {}
+
+
+api.add_resource(RootResource, "/")
+
+
 api.add_resource(V1JobsResource,
                  "/v1/jobs",
                  "/v1/jobs/<int:clusterid>",
