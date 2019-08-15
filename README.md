@@ -1,6 +1,6 @@
-apid.py
-=======
-Proof-of-concept REST-based API for HTCondor, based on the command-line tools.
+condor_restd.py
+===============
+Proof-of-concept REST-based API for HTCondor, based on the Python bindings.
 
 Currently allows read-only queries for jobs (in-queue and historical),
 configuration, and machine status.
@@ -15,7 +15,7 @@ built-in Flask server (not for production), run
 
 For additional scalability, run using a WSGI server such as gunicorn:
 
-    gunicorn -w4 -b127.0.0.1:9680 apid:app
+    gunicorn -w4 -b127.0.0.1:9680 condor_restd:app
 
 
 These commands run on port 9680.

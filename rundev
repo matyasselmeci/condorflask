@@ -12,7 +12,7 @@ ask_yn () {
 }
 
 export FLASK_ENV=development
-export FLASK_APP=apid.py
+export FLASK_APP=condor_restd.py
 cd "$(dirname "$0")"
 while true; do
     flask run -p 9680; ret=$?
