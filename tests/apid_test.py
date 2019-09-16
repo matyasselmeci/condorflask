@@ -43,12 +43,13 @@ def test_condor_version(fixtures):
 
 def test_status(fixtures):
     j = checked_get_json("v1/status")
-    assert j, "config: no classads returned"
-    assert j[0].get("classad"), "config: classad attr missing"
+    assert j, "no classads returned"
+    for attr in ["name", "classad"]:
+        assert j[0].get(attr), "%s attr missing" % (attr)
     for daemon in ["collector", "master", "negotiator", "schedd", "startd"]:
         j = checked_get_json("v1/status?query=" + daemon)
+        assert j, "%s: no classads returned" % (daemon)
         for attr in ["name", "classad"]:
-            assert j, "%s: no classads returned" % (daemon)
             assert j[0].get(attr), "%s: %s attr missing" % (daemon, attr)
 
 
