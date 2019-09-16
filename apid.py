@@ -77,11 +77,13 @@ class JobsBaseResource(Resource):
         ad_dicts = utils.classads_to_dicts(classads)
         for ad in ad_dicts:
             if attribute:
-                return ad[attribute]
+                return ad.get(attribute, None)
             job_data = dict()
             job_data["classad"] = ad
             job_data["jobid"] = "%s.%s" % (ad["clusterid"], ad["procid"])
             data.append(job_data)
+        if attribute:
+            abort(404, message="No matching ads")
         return data
 
     def get(self, clusterid=None, procid=None, attribute=None):
@@ -123,9 +125,6 @@ class V1JobsResource(JobsBaseResource):
         in the result.  The constraint is always applied, even if `clusterid`
         and `procid` are specified.
 
-        Returns 404 if no matching jobs are found.  This includes zero jobs
-        matching the constraint.
-
     """
     querytype = "xquery"
 
@@ -159,9 +158,6 @@ class V1HistoryResource(JobsBaseResource):
         `constraint` is a classad expression restricting which jobs to include
         in the result.  The constraint is always applied, even if `clusterid`
         and `procid` are specified.
-
-        Returns 404 if no matching jobs are found.  This includes zero jobs
-        matching the constraint.
 
     """
     querytype = "history"
