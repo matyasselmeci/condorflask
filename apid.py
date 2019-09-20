@@ -77,7 +77,7 @@ class JobsBaseResource(Resource):
         ad_dicts = utils.classads_to_dicts(classads)
         for ad in ad_dicts:
             if attribute:
-                return ad.get(attribute, None)
+                return ad.get(attribute.lower(), None)
             job_data = dict()
             job_data["classad"] = ad
             job_data["jobid"] = "%s.%s" % (ad["clusterid"], ad["procid"])
@@ -294,17 +294,19 @@ class V1ConfigResource(Resource):
             htcondor.reload_config()
             param = htcondor.param
 
+        param_lower = utils.deep_lcasekeys(param)
+
         if attribute:
             if not validate_attribute(attribute):
                 abort(400, message="Invalid attribute")
 
         if attribute:
             try:
-                return param[attribute]
+                return param_lower[attribute.lower()]
             except KeyError as err:
                 abort(404, message=str(err))
 
-        return utils.deep_lcasekeys(param)
+        return param_lower
 
 
 class RootResource(Resource):
