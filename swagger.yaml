@@ -114,14 +114,14 @@ paths:
           description: Invalid argument(s)
           schema:
             type: string
-  /jobs/{clusterid}:
+  /jobs/{cluster}:
     get:
       summary: Returns information for jobs in the given cluster in the queue.
       tags: [jobs]
       produces: ["application/json"]
       parameters:
         - in: path
-          name: clusterid
+          name: cluster
           type: integer
           minimum: 0
           description: The ClusterId of the jobs to return info for
@@ -135,20 +135,20 @@ paths:
           description: Invalid argument(s)
           schema:
             type: string
-  /jobs/{clusterid}/{procid}:
+  /jobs/{cluster}/{proc}:
     get:
       summary: Returns information for a single job in the given cluster and proc in the queue
       tags: [jobs]
       produces: ["application/json"]
       parameters:
         - in: path
-          name: clusterid
+          name: cluster
           type: integer
           minimum: 0
           description: The ClusterId of the job to return info for
           required: true
         - in: path
-          name: procid
+          name: proc
           type: integer
           minimum: -1
           description: The ProcId of the job to return info for
@@ -162,26 +162,26 @@ paths:
           description: Invalid argument(s)
           schema:
             type: string
-  /jobs/{clusterid}/{procid}/{attribute}:
+  /jobs/{cluster}/{proc}/{attr}:
     get:
       summary: Returns a single attribute of the given job in the queue.
       tags: [jobs]
       produces: ["application/json"]
       parameters:
         - in: path
-          name: clusterid
+          name: cluster
           type: integer
           minimum: 0
           description: The ClusterId of the job to return info for
           required: true
         - in: path
-          name: procid
+          name: proc
           type: integer
           minimum: -1
           description: The ProcId of the job to return info for
           required: true
         - in: path
-          name: attribute
+          name: attr
           type: string
           description: The classad attribute to return
           required: true
@@ -210,14 +210,14 @@ paths:
           description: Invalid argument(s)
           schema:
             type: string
-  /history/{clusterid}:
+  /history/{cluster}:
     get:
       summary: Returns information for jobs in the given cluster in the job history.
       tags: [jobs]
       produces: ["application/json"]
       parameters:
         - in: path
-          name: clusterid
+          name: cluster
           type: integer
           minimum: 0
           description: The ClusterId of the jobs to return info for
@@ -231,20 +231,20 @@ paths:
           description: Invalid argument(s)
           schema:
             type: string
-  /history/{clusterid}/{procid}:
+  /history/{cluster}/{proc}:
     get:
       summary: Returns information for a single job in the given cluster and proc in the job history.
       tags: [jobs]
       produces: ["application/json"]
       parameters:
         - in: path
-          name: clusterid
+          name: cluster
           type: integer
           minimum: 0
           description: The ClusterId of the job to return info for
           required: true
         - in: path
-          name: procid
+          name: proc
           type: integer
           minimum: -1
           description: The ProcId of the job to return info for
@@ -258,26 +258,26 @@ paths:
           description: Invalid argument(s)
           schema:
             type: string
-  /history/{clusterid}/{procid}/{attribute}:
+  /history/{cluster}/{proc}/{attr}:
     get:
       summary: Returns a single attribute of the given job in the job history.
       tags: [jobs]
       produces: ["application/json"]
       parameters:
         - in: path
-          name: clusterid
+          name: cluster
           type: integer
           minimum: 0
           description: The ClusterId of the job to return info for
           required: true
         - in: path
-          name: procid
+          name: proc
           type: integer
           minimum: -1
           description: The ProcId of the job to return info for
           required: true
         - in: path
-          name: attribute
+          name: attr
           type: string
           description: The classad attribute to return
           required: true
@@ -349,14 +349,14 @@ paths:
           description: Invalid argument(s)
           schema:
             type: string
-  /config/{attribute}:
+  /config/{attr}:
     get:
       summary: Returns the value of a specific config attribute
       tags: [config]
       produces: ["application/json"]
       parameters:
         - in: path
-          name: attribute
+          name: attr
           type: string
           description: The classad attribute to return
           required: true
