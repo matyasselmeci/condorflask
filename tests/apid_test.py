@@ -1,5 +1,6 @@
 import os
 import re
+import socket
 import subprocess
 import time
 
@@ -91,3 +92,13 @@ def test_jobs(fixtures):
     _test_jobs_queries(cluster_id, "jobs")
     rm_cluster(cluster_id)
     _test_jobs_queries(cluster_id, "history")
+
+
+def test_config(fixtures):
+    args = ["", "?daemon=master"]
+    for arg in args:
+        j = checked_get_json("v1/config%s" % arg)
+        assert "full_hostname" in j, "full_hostname attr missing"
+        assert j["full_hostname"] == socket.getfqdn()
+
+        assert checked_get("v1/config/full_hostname%s" % arg).content.strip().decode() == '"%s"' % socket.getfqdn()
